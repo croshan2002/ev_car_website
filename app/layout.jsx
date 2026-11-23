@@ -1,6 +1,11 @@
 import './globals.css'
+import { IBM_Plex_Mono, Sora } from 'next/font/google'
 import { SITE, SITE_URL } from '@/lib/site'
 import { THEME_BG, themeScript } from '@/lib/theme-config'
+
+// Self-hosted at build time, so no render-blocking request to Google on first load.
+const sora = Sora({ subsets: ['latin'], variable: '--font-sora', display: 'swap' })
+const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono', display: 'swap' })
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -44,15 +49,9 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en-IN" data-theme="dark" suppressHydrationWarning>
+    <html lang="en-IN" className={`${sora.variable} ${mono.variable}`} data-theme="dark" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
         <link rel="preload" href="/models/car.glb" as="fetch" type="model/gltf-binary" crossOrigin="anonymous" />
         <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM-readable summary" />
       </head>

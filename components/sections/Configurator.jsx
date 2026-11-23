@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { animate, motion } from 'motion/react'
 import { PAINTS, TRIMS, WHEELS, inr, scene, prefersReducedMotion } from '@/lib/store'
+import { useAutoRotate } from '@/lib/turntable'
 
 const TABS = [
   ['paint', 'Paint'],
@@ -48,6 +49,7 @@ export default function Configurator({ paint, setPaint, wheel, setWheel, trim, s
   const [tab, setTab] = useState('paint')
   const [door, setDoor] = useState(false)
   const [lights, setLights] = useState(true)
+  const [spin, setSpin] = useAutoRotate()
 
   useEffect(() => {
     scene.door = door
@@ -65,6 +67,7 @@ export default function Configurator({ paint, setPaint, wheel, setWheel, trim, s
       <div className="config__controls">
         <Toggle label="Driver door" on={door} onChange={setDoor} />
         <Toggle label="Lights" on={lights} onChange={setLights} />
+        <Toggle label="360° spin" on={spin} onChange={setSpin} />
       </div>
 
       <div className="cpanel">

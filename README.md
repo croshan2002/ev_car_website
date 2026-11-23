@@ -14,7 +14,7 @@ Open http://localhost:3000. Production: `npm run build` then `npm start`.
 ## Stack
 
 - **Next.js 16 (App Router) + React 19**
-- **React Three Fiber + drei**: real glTF car model (`public/models/car.glb`, meshopt + WebP, 2.8 MB) with live paint, rim finishes, spinning wheels, opening driver door and switchable lights; `MeshReflectorMaterial` showroom floor
+- **React Three Fiber + drei**: real glTF car model (`public/models/car.glb`, meshopt + WebP, 2.8 MB) with live paint, rim finishes, spinning wheels, drag-to-rotate in any direction with 360° auto spin, opening driver door and switchable lights; `MeshReflectorMaterial` showroom floor
 - **Dark / light theme**: toggle in the nav, saved in localStorage, follows the OS until chosen; the 3D showroom switches too
 - **Motion**: curtain page transition on nav clicks, 3D letter flip for "ARC", spec counters, blur caption swaps, sliding tab line, paint ring, switches, animated price, reservation tick
 - **GSAP ScrollTrigger + Lenis**: smooth scroll and the scroll-driven camera tour
@@ -44,6 +44,7 @@ Open http://localhost:3000. Production: `npm run build` then `npm start`.
 - Paints, wheels, trims, prices: `lib/store.js`
 - Car model setup, rim finishes, poses and design-tour angles: `components/three/Car.jsx` (`prepare`, `RIMS`, `POSES`, `TOUR`)
 - Showroom lighting, floor and per-theme look: `components/three/Scene.jsx` (`LOOK`)
+- 360° rotation: speeds and drag feel in `lib/turntable.js` and `components/three/freeRotate.js`
 - Theme colours: the `:root` and `[data-theme=light]` tokens in `app/globals.css`
 
 Note: the reflective floor is the heaviest part. On slow laptops lower `resolution` on `MeshReflectorMaterial` in `Scene.jsx`.

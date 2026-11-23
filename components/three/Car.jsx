@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { easing } from 'maath'
-import { scene, ACCENT } from '@/lib/store'
+import { scene, setCarReady, ACCENT } from '@/lib/store'
+import { drag } from '@/lib/turntable'
+import { boxHitTest, boxIn, createFreeRotate } from './freeRotate'
 
 /*
  * Real car model: "Car Concept" by Eric Chadwick / Darmstadt Graphics Group, CC BY 4.0
@@ -20,6 +22,7 @@ import { scene, ACCENT } from '@/lib/store'
 
 export const CAR_URL = '/models/car.glb'
 const WHEEL_R = 0.384
+const PIVOT_Y = 0.6 // the car tumbles about its middle, not its tyres
 const CENTER_X = -0.23 // shifts the car so its wheelbase sits on the origin
 const WHEEL_NODES = ['WheelFrontL', 'WheelFrontR', 'WheelRearL', 'WheelRearR']
 
@@ -72,6 +75,19 @@ function prepare(model) {
     return spin
   })
 
+  // Real transmission makes three.js draw the whole scene one more time per pass (and once
+  // more inside the floor reflection). Tinted transparent glass looks the same here.
+  mats('Glass').forEach((m) => {
+    m.transmission = 0
+    m.transparent = true
+    m.opacity = 0.4
+    m.depthWrite = false
+    m.color.set('#06070a')
+    m.roughness = 0.03
+    m.metalness = 0
+    m.needsUpdate = true
+  })
+
   const parts = {
     paint: mats('Paint 1 Carmine'),
     head: mats('Headlight'),
@@ -86,6 +102,44 @@ function prepare(model) {
 
   model.userData.parts = parts
   return parts
+}
+
+/*
+ * Compile every shader in the background before the car is shown. Without this the first
+ * frame compiles them all at once and freezes the page for seconds. Each material needs two
+ * programs: one for the screen (tone mapped) and one for the floor reflection (linear).
+ */
+async function warmUp(gl, object, camera, world) {
+  const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType })
+  const inTarget = (fn) => {
+    const prev = gl.getRenderTarget()
+    gl.setRenderTarget(target)
+    try {
+      return fn()
+    } finally {
+      gl.setRenderTarget(prev)
+    }
+  }
+  try {
+    inTarget(() => gl.compile(object, camera, world)) // start both sets in parallel...
+    await gl.compileAsync(object, camera, world)
+    await inTarget(() => gl.compileAsync(object, camera, world)) // ...then wait for each
+
+    // Upload textures one at a time so no single frame stalls.
+    const textures = new Set()
+    object.traverse((o) => {
+      if (!o.isMesh) return
+      ;[].concat(o.material).forEach((m) => {
+        Object.values(m).forEach((v) => v?.isTexture && textures.add(v))
+      })
+    })
+    for (const t of textures) {
+      gl.initTexture(t)
+      await new Promise((r) => setTimeout(r))
+    }
+  } finally {
+    target.dispose()
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -118,6 +172,10 @@ const POSES = {
 
 export default function Car({ paint, wheel, rig, mobile }) {
   const car = useRef()
+  const tumble = useRef()
+  const yaw = useRef()
+  const free = useMemo(() => createFreeRotate(), [])
+  const box = useRef(null)
   const spin = useRef(0)
   const lastPos = useMemo(() => new THREE.Vector3(-14, 0, 0), [])
   const tmp = useMemo(() => new THREE.Color(), [])
@@ -126,6 +184,38 @@ export default function Car({ paint, wheel, rig, mobile }) {
 
   const { scene: model } = useGLTF(CAR_URL, false)
   const parts = useMemo(() => prepare(model), [model])
+
+  const gl = useThree((s) => s.gl)
+  const camera = useThree((s) => s.camera)
+  const world = useThree((s) => s.scene)
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    let raf = 0
+    // The shaders depend on the environment map, so wait for <Environment> to set it.
+    const start = (tries = 0) => {
+      if (!world.environment && tries < 60) {
+        raf = requestAnimationFrame(() => start(tries + 1))
+        return
+      }
+      warmUp(gl, car.current, camera, world)
+        .catch((e) => console.warn('Shader warm-up failed, showing the car anyway', e))
+        .finally(() => {
+          if (!live) return
+          box.current = boxIn(yaw.current, model)
+          drag.hit = boxHitTest(box.current, yaw.current, camera, gl.domElement)
+          setReady(true)
+          setCarReady()
+        })
+    }
+    start()
+    return () => {
+      live = false
+      drag.hit = null
+      cancelAnimationFrame(raf)
+    }
+  }, [gl, camera, world, model])
 
   useEffect(() => {
     const r = RIMS[wheel.id] ?? RIMS.aero
@@ -139,7 +229,10 @@ export default function Car({ paint, wheel, rig, mobile }) {
     set(parts.rimInner, r.inner)
   }, [wheel, parts])
 
-  useFrame((_, dt) => {
+  useFrame((_, rawDt) => {
+    if (!ready) return // hold the drive-in until the car can be drawn smoothly
+    const dt = Math.min(rawDt, 1 / 20)
+
     // Paint: gloss paints get metallic flake, satin/matte ones go flat.
     const matte = paint.rough > 0.5
     tmp.set(paint.hex)
@@ -167,11 +260,14 @@ export default function Car({ paint, wheel, rig, mobile }) {
     }
     const x = mobile && scene.stage !== 'reserve' ? 0 : p.x
     easing.damp3(car.current.position, [x, 0, 0], scene.stage === 'reserve' ? 1.2 : 0.75, dt)
-    easing.dampAngle(car.current.rotation, 'y', ry + scene.pointer.x * 0.06, 0.6, dt)
+    free.update({ stage: scene.stage, tumble: tumble.current, yaw: yaw.current, pose: ry, parallax: scene.pointer.x * 0.06, dt })
+    // Sink the floor when the car is tipped, so it never cuts through it.
+    scene.floorY = Math.min(0, free.lowest(box.current, tumble.current, yaw.current))
+    document.documentElement.classList.toggle('is-tilted', scene.floorY < -0.35)
     easing.dampAngle(rig.current.rotation, 'x', tilt, 0.6, dt)
 
     // Roll the wheels by the distance travelled along the car's heading.
-    fwd.set(Math.cos(car.current.rotation.y), 0, -Math.sin(car.current.rotation.y))
+    fwd.set(Math.cos(yaw.current.rotation.y), 0, -Math.sin(yaw.current.rotation.y))
     spin.current += delta.copy(car.current.position).sub(lastPos).dot(fwd) / WHEEL_R
     lastPos.copy(car.current.position)
     parts.wheels.forEach((w) => (w.rotation.x = -spin.current))
@@ -181,9 +277,13 @@ export default function Car({ paint, wheel, rig, mobile }) {
   })
 
   return (
-    <group ref={car} position={[-14, 0, 0]}>
-      <group position={[CENTER_X, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <primitive object={model} />
+    <group ref={car} position={[-14, 0, 0]} visible={ready}>
+      <group ref={tumble} position={[0, PIVOT_Y, 0]}>
+        <group ref={yaw}>
+          <group position={[CENTER_X, -PIVOT_Y, 0]} rotation={[0, Math.PI / 2, 0]}>
+            <primitive object={model} />
+          </group>
+        </group>
       </group>
     </group>
   )
