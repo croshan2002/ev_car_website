@@ -31,7 +31,7 @@ Open http://localhost:3000. Production: `npm run build` then `npm start`.
 
 ## SEO, AEO and GEO
 
-- Set `NEXT_PUBLIC_SITE_URL` (see `.env.example`) before deploying. Canonical URL, Open Graph, sitemap, robots and JSON-LD all use it.
+- On Vercel the site URL comes from the production domain. Elsewhere, or to override it, set `NEXT_PUBLIC_SITE_URL` (see `.env.example`). Canonical URL, Open Graph, sitemap, robots and JSON-LD all use it.
 - `lib/site.js` holds the facts, highlights and FAQ. The visible Specs and FAQ sections, the JSON-LD (Organization, WebPage, Product/Car, FAQPage), `/llms.txt` and the metadata are all built from it, so they stay in sync.
 - Generated routes: `/robots.txt` (also allows AI crawlers), `/sitemap.xml`, `/manifest.webmanifest`, `/opengraph-image`, `/llms.txt`.
 
