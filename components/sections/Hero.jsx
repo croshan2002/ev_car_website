@@ -3,6 +3,7 @@
 import { motion } from 'motion/react'
 import Counter from './Counter'
 import { useAutoRotate } from '@/lib/turntable'
+import { openExplore } from '@/lib/explore'
 
 const ease = [0.22, 1, 0.36, 1]
 
@@ -88,22 +89,32 @@ export default function Hero({ go }) {
           <span className="spin-btn__label">Drag the car to rotate 360°</span>
         </motion.button>
 
-        <motion.dl
-          className="stats"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5, duration: 0.6 }}
-        >
-          {STATS.map((s, i) => (
-            <div key={s.label} className="stat">
-              <dt className="stat__v">
-                <Counter value={s.v} decimals={s.d ?? 0} delay={0.5 + i * 0.1} />
-                <small>{s.unit}</small>
-              </dt>
-              <dd>{s.label}</dd>
-            </div>
-          ))}
-        </motion.dl>
+        <div className="hero__right">
+          <motion.div className="hero__explore" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: 0.6 }}>
+            <button type="button" className="pill-btn" onClick={() => openExplore('inside')}>
+              Step inside
+            </button>
+            <button type="button" className="pill-btn" onClick={() => openExplore('parts')}>
+              See all parts
+            </button>
+          </motion.div>
+          <motion.dl
+            className="stats"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.6 }}
+          >
+            {STATS.map((s, i) => (
+              <div key={s.label} className="stat">
+                <dt className="stat__v">
+                  <Counter value={s.v} decimals={s.d ?? 0} delay={0.5 + i * 0.1} />
+                  <small>{s.unit}</small>
+                </dt>
+                <dd>{s.label}</dd>
+              </div>
+            ))}
+          </motion.dl>
+        </div>
       </div>
     </section>
   )

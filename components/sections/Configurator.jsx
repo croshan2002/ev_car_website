@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { animate, motion } from 'motion/react'
 import { PAINTS, TRIMS, WHEELS, inr, scene, prefersReducedMotion } from '@/lib/store'
 import { useAutoRotate } from '@/lib/turntable'
+import { openExplore } from '@/lib/explore'
 
 const TABS = [
   ['paint', 'Paint'],
@@ -73,6 +74,14 @@ export default function Configurator({ paint, setPaint, wheel, setWheel, trim, s
       <div className="cpanel">
         <p className="mono">Configure</p>
         <h2 className="cpanel__title">VOLTA Arc</h2>
+        <div className="cpanel__explore">
+          <button type="button" className="pill-btn" onClick={() => openExplore('inside')}>
+            Step inside
+          </button>
+          <button type="button" className="pill-btn" onClick={() => openExplore('parts')}>
+            See all parts
+          </button>
+        </div>
 
         <div className="ctabs" role="tablist">
           {TABS.map(([id, l]) => (

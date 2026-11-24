@@ -12,6 +12,7 @@ import Reserve from './sections/Reserve'
 import Specs from './sections/Specs'
 import Faq from './sections/Faq'
 import Footer from './sections/Footer'
+import ExploreUI from './ExploreUI'
 import { PAINTS, TRIMS, WHEELS, scene, prefersReducedMotion } from '@/lib/store'
 import { initSmoothScroll, ScrollTrigger, jumpToId } from '@/lib/smooth'
 import { useTheme } from '@/lib/theme'
@@ -71,6 +72,7 @@ export default function Experience() {
         <Faq />
       </main>
       <Footer />
+      <ExploreUI />
 
       <AnimatePresence>
         {curtain && (

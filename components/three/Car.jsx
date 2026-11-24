@@ -7,6 +7,9 @@ import * as THREE from 'three'
 import { easing } from 'maath'
 import { scene, setCarReady, ACCENT } from '@/lib/store'
 import { drag } from '@/lib/turntable'
+import { getExplore } from '@/lib/explore'
+import Explore from './Explore'
+import { readModel } from './exploreModel'
 import { boxHitTest, boxIn, createFreeRotate } from './freeRotate'
 
 /*
@@ -48,11 +51,21 @@ function prepare(model) {
   const mats = (name) => [...(byMat[name] ?? [])]
 
   // Remove third-party logos.
-  const plate = model.getObjectByName('License Plate')
+  const plate = model.getObjectByName('License_Plate') // GLTFLoader turns spaces into underscores
   if (plate) plate.visible = false
-  ;[...mats('Rim1'), ...mats('Rim2')].forEach((m) => {
-    m.emissiveMap = null
-    m.emissive.set(0x000000)
+  // Every emissive map but the dashboard's is the logo, and the tyre wall has it printed and embossed.
+  Object.entries(byMat).forEach(([name, set]) =>
+    set.forEach((m) => {
+      if (!m.emissiveMap || name === 'Dashboard') return
+      m.emissiveMap = null
+      m.emissive.set(0x000000)
+      m.needsUpdate = true
+    })
+  )
+  mats('Tireside').forEach((m) => {
+    m.map = null
+    m.normalMap = null
+    m.color.set('#1c1c1c')
     m.needsUpdate = true
   })
 
@@ -75,6 +88,14 @@ function prepare(model) {
     return spin
   })
 
+  // The steering wheel comes turned to one side as well. Keep the column's rake, undo the turn.
+  const column = model.getObjectByName('InteriorSteeringCylinder')
+  if (column) {
+    const q = column.quaternion
+    const turn = new THREE.Quaternion(0, q.y, 0, q.w).normalize()
+    q.multiply(turn.invert())
+  }
+
   // Real transmission makes three.js draw the whole scene one more time per pass (and once
   // more inside the floor reflection). Tinted transparent glass looks the same here.
   mats('Glass').forEach((m) => {
@@ -92,13 +113,17 @@ function prepare(model) {
     paint: mats('Paint 1 Carmine'),
     head: mats('Headlight'),
     tail: mats('Brakelight'),
+    glass: mats('Glass'),
     rimFace: mats('Rim2'),
     rimInner: mats('Rim1'),
     door: model.getObjectByName('BodyDoorRColor1'), // right-hand (driver) door faces the camera
+    doorL: model.getObjectByName('BodyDoorLColor1'),
     wheels,
   }
   // Softer metallic flake: the file's flake normal map reads as grain at showroom distance.
   parts.paint.forEach((m) => m.normalScale?.setScalar(0.12))
+
+  parts.info = readModel(model, new THREE.Matrix4().makeTranslation(CENTER_X, 0, 0).multiply(new THREE.Matrix4().makeRotationY(Math.PI / 2)))
 
   model.userData.parts = parts
   return parts
@@ -168,9 +193,10 @@ const POSES = {
   perf: { x: 1.4, ry: 0.02 },
   config: { x: -1.25, ry: -0.58 },
   reserve: { x: 16, ry: 0 },
+  explore: { x: 0, ry: 0 }, // Explore.jsx assumes the car stands here
 }
 
-export default function Car({ paint, wheel, rig, mobile }) {
+export default function Car({ paint, wheel, rig, mobile, fog, env }) {
   const car = useRef()
   const tumble = useRef()
   const yaw = useRef()
@@ -250,20 +276,25 @@ export default function Car({ paint, wheel, rig, mobile }) {
     parts.tail.forEach((m) => (m.emissiveIntensity = THREE.MathUtils.damp(m.emissiveIntensity, on ? 3 : 0.4, 8, dt)))
 
     // Pose
-    const p = POSES[scene.stage] ?? POSES.hero
+    const ex = getExplore()
+    // Clearer glass from inside, so the cabin has a view out.
+    const tint = ex.open && ex.view === 'inside' ? 0.12 : 0.4
+    parts.glass.forEach((m) => (m.opacity = THREE.MathUtils.damp(m.opacity, tint, 4, dt)))
+    const stage = ex.open ? 'explore' : scene.stage
+    const p = POSES[stage] ?? POSES.hero
     let ry = p.ry
     let tilt = 0
-    if (scene.stage === 'design') {
+    if (stage === 'design') {
       const tp = tourPose(scene.orbit)
       ry = tp.ry
       tilt = tp.tilt
     }
-    const x = mobile && scene.stage !== 'reserve' ? 0 : p.x
-    easing.damp3(car.current.position, [x, 0, 0], scene.stage === 'reserve' ? 1.2 : 0.75, dt)
-    free.update({ stage: scene.stage, tumble: tumble.current, yaw: yaw.current, pose: ry, parallax: scene.pointer.x * 0.06, dt })
+    const x = mobile && stage !== 'reserve' ? 0 : p.x
+    easing.damp3(car.current.position, [x, 0, 0], stage === 'reserve' ? 1.2 : ex.open ? 0.4 : 0.75, dt)
+    free.update({ stage, tumble: tumble.current, yaw: yaw.current, pose: ry, parallax: ex.open ? 0 : scene.pointer.x * 0.06, dt })
     // Sink the floor when the car is tipped, so it never cuts through it.
-    scene.floorY = Math.min(0, free.lowest(box.current, tumble.current, yaw.current))
-    document.documentElement.classList.toggle('is-tilted', scene.floorY < -0.35)
+    scene.floorY = Math.min(scene.exploreFloor, free.lowest(box.current, tumble.current, yaw.current))
+    document.documentElement.classList.toggle('is-tilted', !ex.open && scene.floorY < -0.35)
     easing.dampAngle(rig.current.rotation, 'x', tilt, 0.6, dt)
 
     // Roll the wheels by the distance travelled along the car's heading.
@@ -272,20 +303,27 @@ export default function Car({ paint, wheel, rig, mobile }) {
     lastPos.copy(car.current.position)
     parts.wheels.forEach((w) => (w.rotation.x = -spin.current))
 
-    // Door swings outward about its front hinge.
-    if (parts.door) easing.dampAngle(parts.door.rotation, 'z', scene.door ? 1.0 : 0, 0.45, dt)
+    // Doors swing outward about their front hinges.
+    const shut = ex.part && ex.view === 'parts'
+    const right = ex.open ? (ex.doors && !shut && !ex.exploded) || scene.enteringCar : scene.door
+    const left = ex.open && ex.doors && !shut && !ex.exploded
+    if (parts.door) easing.dampAngle(parts.door.rotation, 'z', right ? 1.0 : 0, 0.45, dt)
+    if (parts.doorL) easing.dampAngle(parts.doorL.rotation, 'z', left ? -1.0 : 0, 0.45, dt)
   })
 
   return (
-    <group ref={car} position={[-14, 0, 0]} visible={ready}>
-      <group ref={tumble} position={[0, PIVOT_Y, 0]}>
-        <group ref={yaw}>
-          <group position={[CENTER_X, -PIVOT_Y, 0]} rotation={[0, Math.PI / 2, 0]}>
-            <primitive object={model} />
+    <>
+      <Explore info={parts.info} fog={fog} env={env} />
+      <group ref={car} position={[-14, 0, 0]} visible={ready}>
+        <group ref={tumble} position={[0, PIVOT_Y, 0]}>
+          <group ref={yaw}>
+            <group position={[CENTER_X, -PIVOT_Y, 0]} rotation={[0, Math.PI / 2, 0]}>
+              <primitive object={model} />
+            </group>
           </group>
         </group>
       </group>
-    </group>
+    </>
   )
 }
 

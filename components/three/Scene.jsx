@@ -7,6 +7,7 @@ import { easing } from 'maath'
 import Car from './Car'
 import { scene, isCarReady, onCarReady } from '@/lib/store'
 import { initTurntableDrag } from '@/lib/turntable'
+import { getExplore } from '@/lib/explore'
 
 // Showroom look per theme: a dark gallery, or a bright white studio.
 const LOOK = {
@@ -69,8 +70,9 @@ function Rig({ paint, wheel, look }) {
   const mobile = size.width < 820
 
   useFrame((_, dt) => {
-    const s = mobile ? Math.min(0.55, size.width / 800) : Math.min(0.95, size.width / 1600 + 0.06)
-    const y = mobile ? 0.95 : -0.15
+    const open = getExplore().open
+    const s = open ? 1 : mobile ? Math.min(0.55, size.width / 800) : Math.min(0.95, size.width / 1600 + 0.06)
+    const y = open ? 0 : mobile ? 0.95 : -0.15
     easing.damp3(rig.current.scale, [s, s, s], 0.4, dt)
     easing.damp3(rig.current.position, [0, y, 0], 0.4, dt)
   })
@@ -79,7 +81,7 @@ function Rig({ paint, wheel, look }) {
     <group ref={rig}>
       {/* own boundary, so the showroom shows while the car downloads */}
       <Suspense fallback={null}>
-        <Car paint={paint} wheel={wheel} rig={rig} mobile={mobile} />
+        <Car paint={paint} wheel={wheel} rig={rig} mobile={mobile} fog={look.fog} env={look.env} />
       </Suspense>
       <Floor look={look} />
       {/* overhead light bars, mostly seen in reflections */}

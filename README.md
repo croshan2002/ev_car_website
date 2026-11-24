@@ -27,6 +27,7 @@ Open http://localhost:3000. Production: `npm run build` then `npm start`.
 | Design | Sticky tour: side profile → light bar → tail light → glass roof as you scroll |
 | Performance | Numbers follow the powertrain you pick in the configurator |
 | Configure | Paint (6, incl. satin + matte), wheels (Aero / Turbine / Sport), powertrain, door and light switches, live ex-showroom price |
+| Explorer | “See all parts”: 28 parts to view one by one, take the car apart, open the doors. “Step inside”: look around from any of the four seats |
 | Reserve | Car drives off; summary + reservation form with success animation |
 
 ## SEO, AEO and GEO
@@ -45,6 +46,7 @@ Open http://localhost:3000. Production: `npm run build` then `npm start`.
 - Car model setup, rim finishes, poses and design-tour angles: `components/three/Car.jsx` (`prepare`, `RIMS`, `POSES`, `TOUR`)
 - Showroom lighting, floor and per-theme look: `components/three/Scene.jsx` (`LOOK`)
 - 360° rotation: speeds and drag feel in `lib/turntable.js` and `components/three/freeRotate.js`
+- Explorer (all parts + inside view): part names, text, exploded-view offsets and cabin dots in `lib/parts.js`; seats and camera in `components/three/Explore.jsx`; panel in `components/ExploreUI.jsx`
 - Theme colours: the `:root` and `[data-theme=light]` tokens in `app/globals.css`
 
 Note: the reflective floor is the heaviest part. On slow laptops lower `resolution` on `MeshReflectorMaterial` in `Scene.jsx`.
